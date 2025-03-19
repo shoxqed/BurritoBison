@@ -4,7 +4,43 @@
 	<script src="kongregate_api.js"></script>
     <script>
       var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {onProgress: UnityProgress,Module:{onRuntimeInitialized: function() {UnityProgress(gameInstance, "complete")}}});
+      // Cheat: Auto-add money every 5 seconds
+      setInterval(function() {
+    try {
+      gameInstance.SendMessage("GameController", "SetMoney", 999999);
+      console.log("Money cheat activated!");
+    } catch (e) {
+      console.log("Waiting for game to load...");
+    }
+  }, 5000);
+
+  // Cheat Button: Manually add money
+  document.addEventListener("DOMContentLoaded", function() {
+    let cheatButton = document.createElement("button");
+    cheatButton.innerText = "Get Money";
+    cheatButton.style.position = "absolute";
+    cheatButton.style.top = "10px";
+    cheatButton.style.left = "10px";
+    cheatButton.style.zIndex = "9999";
+    cheatButton.style.padding = "10px";
+    cheatButton.style.background = "red";
+    cheatButton.style.color = "white";
+    cheatButton.style.border = "none";
+    cheatButton.style.cursor = "pointer";
+    
+    cheatButton.onclick = function() {
+      try {
+        gameInstance.SendMessage("GameController", "SetMoney", 999999);
+        alert("Money added!");
+      } catch (e) {
+        alert("Game not fully loaded yet.");
+      }
+    };
+
+    document.body.appendChild(cheatButton);
+  });
     </script>
+	
     <div class="webgl-content">
         <div id="gameContainer" style="width: 100%; height: 100%; margin: auto"></div>
         </div>
