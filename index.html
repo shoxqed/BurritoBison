@@ -4,6 +4,25 @@
 	<script src="kongregate_api.js"></script>
     <script>
       var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {onProgress: UnityProgress,Module:{onRuntimeInitialized: function() {UnityProgress(gameInstance, "complete")}}});
+      function saveGameData() {
+    	let saveData = JSON.stringify(localStorage);
+    	let blob = new Blob([saveData], { type: "application/json" });
+    	let a = document.createElement("a");
+    	a.href = URL.createObjectURL(blob);
+    	a.download = "gameSave.json";
+    	document.body.appendChild(a);
+    	a.click();
+    	document.body.removeChild(a);}
+
+      window.onload = function() {
+    	let saveButton = document.createElement("button");
+    	saveButton.innerText = "Save Game";
+    	saveButton.style.position = "absolute";
+    	saveButton.style.top = "10px";
+    	saveButton.style.left = "10px";
+    	saveButton.onclick = saveGameData;
+    	document.body.appendChild(saveButton);
+	};
     </script>
 	
     <div class="webgl-content">
