@@ -33,14 +33,6 @@
   <div id="errorLog"></div>
 
   <script>
-    var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
-    onProgress: UnityProgress,
-    Module: {
-      onRuntimeInitialized: function () {
-        UnityProgress(gameInstance, "complete")
-      }
-    }
-  });
     // Display messages on screen
     function displayMessage(message) {
       const logDiv = document.getElementById("errorLog");
@@ -51,31 +43,69 @@
       logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll to latest
     }
 
-    // Original UnityLoader instantiation (unchanged)
-    
-
     // Track runtime initialization
+    var gameInstance = null;
     var isRuntimeInitialized = false;
-    gameInstance.Module.onRuntimeInitialized = function () {
-      isRuntimeInitialized = true;
-      UnityProgress(gameInstance, "complete");
-      displayMessage("Unity runtime initialized.");
-      // Initialize IndexedDB filesystem
-      if (gameInstance.Module.FS) {
-        try {
-          gameInstance.Module.FS.mkdir("/PlayerPrefs");
-          gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/PlayerPrefs");
-          gameInstance.Module.FS.syncfs(true, function (err) {
-            if (err) displayMessage("FS sync failed: " + err);
-            else displayMessage("IndexedDB FS synced.");
-          });
-        } catch (e) {
-          displayMessage("Error initializing FS: " + e.message);
+
+    // Initialize game after scripts load
+    window.addEventListener("DOMContentLoaded", function () {
+      try {
+        if (typeof UnityLoader === "undefined") {
+          displayMessage("UnityLoader not defined. Check if burrito-bison-ll.js is loaded correctly.");
+          return;
         }
-      } else {
-        displayMessage("Emscripten FS not available.");
+
+        // Original UnityLoader instantiation (unchanged)
+        gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
+          onProgress: UnityProgress,
+          Module: {
+            onRuntimeInitialized: function () {
+              UnityProgress(gameInstance, "complete")
+            }
+          }
+        });
+
+        // Override onRuntimeInitialized for FS setup
+        gameInstance.Module.onRuntimeInitialized = function () {
+          isRuntimeInitialized = true;
+          displayMessage("Unity runtime initialized.");
+          // Attempt FS initialization with retry
+          let retries = 3;
+          function tryInitializeFS() {
+            if (!gameInstance.Module.FS) {
+              if (retries > 0) {
+                retries--;
+                displayMessage(`FS not available, retrying (${retries} left)...`);
+                setTimeout(tryInitializeFS, 1000); // Wait 1s
+                return;
+              }
+              displayMessage("Emscripten FS unavailable after retries. Check build settings or browser restrictions.");
+              return;
+            }
+            try {
+              // Initialize MEMFS as fallback
+              gameInstance.Module.FS.mkdir("/PlayerPrefs");
+              displayMessage("Created /PlayerPrefs in MEMFS.");
+              // Try IDBFS for persistent storage
+              if (gameInstance.Module.FS.filesystems.IDBFS) {
+                gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/PlayerPrefs");
+                gameInstance.Module.FS.syncfs(true, function (err) {
+                  if (err) displayMessage("IDBFS sync failed: " + err);
+                  else displayMessage("IDBFS synced successfully.");
+                });
+              } else {
+                displayMessage("IDBFS not available; using MEMFS only.");
+              }
+            } catch (e) {
+              displayMessage("Error initializing FS: " + e.message);
+            }
+          }
+          tryInitializeFS();
+        };
+      } catch (e) {
+        displayMessage("Error initializing game: " + e.message);
       }
-    };
+    });
 
     // Save localStorage data
     function saveLocalStorage() {
@@ -225,7 +255,7 @@
     }
 
     // Add buttons and error log on page load
-    window.onload = function () {
+    window.addEventListener("load", function () {
       try {
         // Save Local Storage button
         const saveButton = document.createElement("button");
@@ -252,7 +282,7 @@
       } catch (e) {
         displayMessage("Error adding buttons: " + e.message);
       }
-    };
+    });
   </script>
 </body>
 </html>
