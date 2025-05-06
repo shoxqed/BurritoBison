@@ -1,247 +1,60 @@
-<!DOCTYPE html>
-<html lang="en-us">
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <title>Burrito Bison: Launcha Libre</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="UnityProgress.js"></script>
-  <script src="burrito-bison-ll.js"></script>
-  <script src="kongregate_api.js"></script>
-</head>
-<body>
-  <div class="webgl-content">
-    <div id="gameContainer" style="width: 100%; height: 100%; margin: auto"></div>
-  </div>
-
-  <script>
-    var gameInstance = null;
-    try {
-      gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
-        onProgress: UnityProgress,
-        Module: {
-          onRuntimeInitialized: function () {
-            console.log("Unity runtime initialized.");
-            UnityProgress(gameInstance, "complete");
-            // Initialize IndexedDB filesystem if needed
-            if (gameInstance.Module.FS) {
-              try {
-                gameInstance.Module.FS.mkdir("/PlayerPrefs");
-                gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/PlayerPrefs");
-                gameInstance.Module.FS.syncfs(true, function (err) {
-                  if (err) console.error("Error syncing FS:", err);
-                  else console.log("IndexedDB FS synced.");
-                });
-              } catch (e) {
-                console.error("Error initializing FS:", e);
-              }
-            }
-          },
-          errorhandler: function (e) {
-            console.error("Unity runtime error:", e);
-          }
-        }
-      });
-    } catch (e) {
-      console.error("Failed to instantiate UnityLoader:", e);
-    }
-
-    // Save localStorage data
-    function saveGameData() {
-      try {
-        let saveData = JSON.stringify(localStorage, null, 2);
-        let blob = new Blob([saveData], { type: "application/json" });
-        let a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "gameSave.json";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch (e) {
-        console.error("Error saving game data:", e);
+<link rel="stylesheet" href="style.css">
+<script src="UnityProgress.js"></script>
+<script src="burrito-bison-ll.js"></script>
+<script src="kongregate_api.js"></script>
+<script>
+  var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
+    onProgress: UnityProgress,
+    Module: {
+      onRuntimeInitialized: function () {
+        UnityProgress(gameInstance, "complete")
       }
     }
+  });
 
-    // Print localStorage data
-    function printLocalStorageData() {
-      try {
-        let prettyData = JSON.stringify(localStorage, null, 2);
-        console.log("LocalStorage:", prettyData);
-        let blob = new Blob([prettyData], { type: "text/plain" });
-        let a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "localStoragePrint.txt";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch (e) {
-        console.error("Error printing localStorage:", e);
-      }
-    }
+  function saveGameData() {
+    let saveData = JSON.stringify(localStorage);
+    let blob = new Blob([saveData], { type: "application/json" });
+    let a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "gameSave.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
-    // Scrape IndexedDB data
-    function scrapeIndexedDBData(callback) {
-      let data = { indexedDB: {} };
-      if (gameInstance && gameInstance.Module && gameInstance.Module.FS) {
-        try {
-          // Additional Unity WebGL paths
-          const paths = ["/PlayerPrefs/", "/idbfs/", "/", "/home/web_user/"];
-          paths.forEach(path => {
-            try {
-              let files = gameInstance.Module.FS.readdir(path) || [];
-              data.indexedDB[path] = {};
-              files.forEach(file => {
-                if (file !== "." && file !== "..") {
-                  try {
-                    let filePath = path + file;
-                    let stats = gameInstance.Module.FS.stat(filePath);
-                    if (!gameInstance.Module.FS.isDir(stats.mode)) {
-                      let content = gameInstance.Module.FS.readFile(filePath, { encoding: "utf8" });
-                      data.indexedDB[path][file] = content;
-                    }
-                  } catch (e) {
-                    console.error(`Error reading file ${file} in ${path}:`, e);
-                  }
-                }
-              });
-            } catch (e) {
-              console.error(`Error reading directory ${path}:`, e);
-            }
-          });
-        } catch (e) {
-          console.error("Error accessing Emscripten FS:", e);
-        }
-      } else {
-        console.warn("Emscripten FS not available. Ensure game is fully loaded.");
-      }
-      callback(data);
-    }
+  function printLocalStorageData() {
+    let prettyData = JSON.stringify(localStorage, null, 2);
+    console.log(prettyData);
 
-    // Scrape WebAssembly memory
-    function scrapeWasmMemory(callback) {
-      let data = { wasmMemory: {} };
-      if (gameInstance && gameInstance.Module && gameInstance.Module.HEAPU8) {
-        try {
-          // Safer memory access with smaller region
-          const startOffset = 0x1000;
-          const length = 256; // Reduced to avoid crashes
-          let memory = gameInstance.Module.HEAPU8;
-          let memorySlice = new Uint8Array(memory.buffer, startOffset, Math.min(length, memory.buffer.byteLength - startOffset));
-          data.wasmMemory.rawData = Array.from(memorySlice).map(b => b.toString(16).padStart(2, "0")).join("");
+    let blob = new Blob([prettyData], { type: "text/plain" });
+    let a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "localStoragePrint.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
-          // Attempt to call exported functions (e.g., from emscripten (1).code)
-          if (gameInstance.Module.asm) {
-            try {
-              // Hypothetical: Check for exported game state function
-              if (typeof gameInstance.Module.asm.getGameState === "function") {
-                data.wasmMemory.gameState = gameInstance.Module.asm.getGameState();
-              }
-            } catch (e) {
-              console.error("Error calling exported functions:", e);
-            }
-          }
-        } catch (e) {
-          console.error("Error accessing WebAssembly memory:", e);
-        }
-      } else {
-        console.warn("WebAssembly memory not accessible.");
-      }
-      callback(data);
-    }
+  window.onload = function () {
+    let saveButton = document.createElement("button");
+    saveButton.innerText = "Save Game";
+    saveButton.style.position = "absolute";
+    saveButton.style.top = "10px";
+    saveButton.style.left = "10px";
+    saveButton.onclick = saveGameData;
+    document.body.appendChild(saveButton);
 
-    // Scrape Kongregate API data
-    function scrapeKongregateData(callback) {
-      let data = { kongregate: {} };
-      if (typeof kongregate !== "undefined" && kongregate.services) {
-        try {
-          data.kongregate.userId = kongregate.services.getUserId() || "unknown";
-          data.kongregate.username = kongregate.services.getUsername() || "unknown";
-          // Try to fetch stats with a generic callback
-          kongregate.stats.submit("getStats", 0, function (result) {
-            data.kongregate.stats = result || {};
-            callback(data);
-          });
-        } catch (e) {
-          console.error("Error accessing Kongregate API:", e);
-          callback(data);
-        }
-      } else {
-        console.warn("Kongregate API not available. Ensure game is running on Kongregate.");
-        callback(data);
-      }
-    }
+    let printButton = document.createElement("button");
+    printButton.innerText = "Print Local Storage";
+    printButton.style.position = "absolute";
+    printButton.style.top = "50px";
+    printButton.style.left = "10px";
+    printButton.onclick = printLocalStorageData;
+    document.body.appendChild(printButton);
+  };
+</script>
 
-    // Scrape all data sources
-    function scrapeAllData() {
-      if (!gameInstance) {
-        console.error("Game instance not initialized. Please wait for game to load.");
-        return;
-      }
-      let allData = {
-        localStorage: JSON.parse(JSON.stringify(localStorage)),
-        timestamp: new Date().toISOString()
-      };
-
-      scrapeIndexedDBData(function (indexedDBData) {
-        allData.indexedDB = indexedDBData.indexedDB;
-
-        scrapeWasmMemory(function (wasmData) {
-          allData.wasmMemory = wasmData.wasmMemory;
-
-          scrapeKongregateData(function (kongregateData) {
-            allData.kongregate = kongregateData.kongregate;
-
-            try {
-              let prettyData = JSON.stringify(allData, null, 2);
-              console.log("Scraped Data:", prettyData);
-              let blob = new Blob([prettyData], { type: "application/json" });
-              let a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = `burrito-bison-data-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-            } catch (e) {
-              console.error("Error saving scraped data:", e);
-            }
-          });
-        });
-      });
-    }
-
-    // Add buttons after page load
-    window.onload = function () {
-      try {
-        // Save Game button
-        let saveButton = document.createElement("button");
-        saveButton.innerText = "Save Game";
-        saveButton.style.position = "absolute";
-        saveButton.style.top = "10px";
-        saveButton.style.left = "10px";
-        saveButton.onclick = saveGameData;
-        document.body.appendChild(saveButton);
-
-        // Print Local Storage button
-        let printButton = document.createElement("button");
-        printButton.innerText = "Print Local Storage";
-        printButton.style.position = "absolute";
-        printButton.style.top = "50px";
-        printButton.style.left = "10px";
-        printButton.onclick = printLocalStorageData;
-        document.body.appendChild(printButton);
-
-        // Scrape All Data button
-        let scrapeButton = document.createElement("button");
-        scrapeButton.innerText = "Scrape All Data";
-        scrapeButton.style.position = "absolute";
-        scrapeButton.style.top = "90px";
-        scrapeButton.style.left = "10px";
-        scrapeButton.onclick = scrapeAllData;
-        document.body.appendChild(scrapeButton);
-      } catch (e) {
-        console.error("Error adding buttons:", e);
-      }
-    };
-  </script>
-</body>
-</html>
+<div class="webgl-content">
+  <div id="gameContainer" style="width: 100%; height: 100%; margin: auto"></div>
+</div>
