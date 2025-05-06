@@ -69,38 +69,77 @@
         gameInstance.Module.onRuntimeInitialized = function () {
           isRuntimeInitialized = true;
           displayMessage("Unity runtime initialized.");
-          // Attempt FS initialization with retry
-          let retries = 3;
-          function tryInitializeFS() {
-            if (!gameInstance.Module.FS) {
+
+          // Wait for JS_FileSystem_Mount dependency
+          let retries = 10; // Wait up to 10 seconds
+          function waitForFSDependency() {
+            if (gameInstance.Module.getRunDependencyCount && gameInstance.Module.getRunDependencyCount() > 0) {
               if (retries > 0) {
                 retries--;
-                displayMessage(`FS not available, retrying (${retries} left)...`);
-                setTimeout(tryInitializeFS, 1000); // Wait 1s
+                displayMessage(`Waiting for FS dependency (${retries} retries left)...`);
+                setTimeout(waitForFSDependency, 1000); // Wait 1s
                 return;
               }
-              displayMessage("Emscripten FS unavailable after retries. Check build settings or browser restrictions.");
+              displayMessage("FS dependency timeout. IDBFS may not be available.");
+              initializeFSFallback();
+              return;
+            }
+            initializeFS();
+          }
+
+          function initializeFS() {
+            if (!gameInstance.Module.FS) {
+              displayMessage("Emscripten FS unavailable. Check build settings or browser restrictions.");
+              initializeFSFallback();
               return;
             }
             try {
-              // Initialize MEMFS as fallback
-              gameInstance.Module.FS.mkdir("/PlayerPrefs");
-              displayMessage("Created /PlayerPrefs in MEMFS.");
-              // Try IDBFS for persistent storage
-              if (gameInstance.Module.FS.filesystems.IDBFS) {
-                gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/PlayerPrefs");
+              // Check if /idbfs is mounted
+              if (gameInstance.Module.FS.readdir("/idbfs")) {
+                displayMessage("IDBFS mounted at /idbfs.");
+                // Ensure syncfs is complete
                 gameInstance.Module.FS.syncfs(true, function (err) {
-                  if (err) displayMessage("IDBFS sync failed: " + err);
-                  else displayMessage("IDBFS synced successfully.");
+                  if (err) {
+                    displayMessage("IDBFS sync failed: " + err);
+                    initializeFSFallback();
+                  } else {
+                    displayMessage("IDBFS synced successfully.");
+                  }
                 });
               } else {
-                displayMessage("IDBFS not available; using MEMFS only.");
+                displayMessage("IDBFS not mounted. Attempting manual mount.");
+                gameInstance.Module.FS.mkdir("/idbfs");
+                gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/idbfs");
+                gameInstance.Module.FS.syncfs(true, function (err) {
+                  if (err) {
+                    displayMessage("Manual IDBFS mount failed: " + err);
+                    initializeFSFallback();
+                  } else {
+                    displayMessage("Manual IDBFS mount and sync successful.");
+                  }
+                });
               }
             } catch (e) {
               displayMessage("Error initializing FS: " + e.message);
+              initializeFSFallback();
             }
           }
-          tryInitializeFS();
+
+          function initializeFSFallback() {
+            try {
+              if (!gameInstance.Module.FS) {
+                displayMessage("No FS available; skipping FS operations.");
+                return;
+              }
+              // Fallback to MEMFS
+              gameInstance.Module.FS.mkdir("/idbfs");
+              displayMessage("Created /idbfs in MEMFS (non-persistent).");
+            } catch (e) {
+              displayMessage("Error initializing MEMFS fallback: " + e.message);
+            }
+          }
+
+          waitForFSDependency();
         };
       } catch (e) {
         displayMessage("Error initializing game: " + e.message);
@@ -135,7 +174,7 @@
         return;
       }
       try {
-        const paths = ["/PlayerPrefs/", "/idbfs/", "/home/web_user/", "/"];
+        const paths = ["/idbfs/"];
         paths.forEach(path => {
           try {
             const files = gameInstance.Module.FS.readdir(path) || [];
