@@ -46,6 +46,14 @@
     // Track runtime initialization
     var gameInstance = null;
     var isRuntimeInitialized = false;
+    gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
+          onProgress: UnityProgress,
+          Module: {
+            onRuntimeInitialized: function () {
+              UnityProgress(gameInstance, "complete")
+            }
+          }
+        });
 
     // Initialize game after scripts load
     window.addEventListener("DOMContentLoaded", function () {
@@ -55,15 +63,7 @@
           return;
         }
 
-        // Original UnityLoader instantiation (unchanged)
-        gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
-          onProgress: UnityProgress,
-          Module: {
-            onRuntimeInitialized: function () {
-              UnityProgress(gameInstance, "complete")
-            }
-          }
-        });
+        
 
         // Override onRuntimeInitialized for FS setup
         gameInstance.Module.onRuntimeInitialized = function () {
