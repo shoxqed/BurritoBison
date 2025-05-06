@@ -33,6 +33,14 @@
   <div id="errorLog"></div>
 
   <script>
+    var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
+    onProgress: UnityProgress,
+    Module: {
+      onRuntimeInitialized: function () {
+        UnityProgress(gameInstance, "complete")
+      }
+    }
+  });
     // Display messages on screen
     function displayMessage(message) {
       const logDiv = document.getElementById("errorLog");
@@ -44,14 +52,7 @@
     }
 
     // Original UnityLoader instantiation (unchanged)
-    var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
-      onProgress: UnityProgress,
-      Module: {
-        onRuntimeInitialized: function () {
-          UnityProgress(gameInstance, "complete")
-        }
-      }
-    });
+    
 
     // Track runtime initialization
     var isRuntimeInitialized = false;
