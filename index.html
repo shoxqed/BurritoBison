@@ -8,58 +8,79 @@
   <script src="UnityProgress.js"></script>
   <script src="burrito-bison-ll.js"></script>
   <script src="kongregate_api.js"></script>
+  <style>
+    #errorLog {
+      position: absolute;
+      top: 130px;
+      left: 10px;
+      width: 300px;
+      max-height: 200px;
+      background-color: rgba(0, 0, 0, 0.8);
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      padding: 10px;
+      overflow-y: auto;
+      z-index: 1000;
+      border: 1px solid #fff;
+    }
+  </style>
 </head>
 <body>
   <div class="webgl-content">
     <div id="gameContainer" style="width: 100%; height: 100%; margin: auto"></div>
   </div>
+  <div id="errorLog"></div>
 
   <script>
-    // Global state
-    var gameInstance = null;
-    var isRuntimeInitialized = false;
-
-    // Initialize Unity WebGL
-    console.log("Initializing UnityLoader...");
-    try {
-      gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
-        onProgress: UnityProgress,
-        Module: {
-          onRuntimeInitialized: function () {
-            console.log("Unity runtime initialized.");
-            isRuntimeInitialized = true;
-            UnityProgress(gameInstance, "complete");
-            // Initialize IndexedDB filesystem
-            if (gameInstance.Module.FS) {
-              try {
-                gameInstance.Module.FS.mkdir("/PlayerPrefs");
-                gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/PlayerPrefs");
-                gameInstance.Module.FS.syncfs(true, function (err) {
-                  if (err) console.error("FS sync failed:", err);
-                  else console.log("IndexedDB FS synced.");
-                });
-              } catch (e) {
-                console.error("Error initializing FS:", e);
-              }
-            } else {
-              console.warn("Emscripten FS not available.");
-            }
-          },
-          errorhandler: function (e) {
-            console.error("Unity runtime error:", e);
-          }
-        }
-      });
-    } catch (e) {
-      console.error("Failed to instantiate UnityLoader:", e);
-      alert("Failed to load game. Check console for errors.");
+    // Display messages on screen
+    function displayMessage(message) {
+      const logDiv = document.getElementById("errorLog");
+      const timestamp = new Date().toISOString().slice(11, 19); // HH:MM:SS
+      const p = document.createElement("p");
+      p.textContent = `[${timestamp}] ${message}`;
+      logDiv.appendChild(p);
+      logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll to latest
     }
+
+    // Original UnityLoader instantiation (unchanged)
+    var gameInstance = UnityLoader.instantiate("gameContainer", "burrito-bison-ll.json", {
+      onProgress: UnityProgress,
+      Module: {
+        onRuntimeInitialized: function () {
+          UnityProgress(gameInstance, "complete")
+        }
+      }
+    });
+
+    // Track runtime initialization
+    var isRuntimeInitialized = false;
+    gameInstance.Module.onRuntimeInitialized = function () {
+      isRuntimeInitialized = true;
+      UnityProgress(gameInstance, "complete");
+      displayMessage("Unity runtime initialized.");
+      // Initialize IndexedDB filesystem
+      if (gameInstance.Module.FS) {
+        try {
+          gameInstance.Module.FS.mkdir("/PlayerPrefs");
+          gameInstance.Module.FS.mount(gameInstance.Module.FS.filesystems.IDBFS, {}, "/PlayerPrefs");
+          gameInstance.Module.FS.syncfs(true, function (err) {
+            if (err) displayMessage("FS sync failed: " + err);
+            else displayMessage("IndexedDB FS synced.");
+          });
+        } catch (e) {
+          displayMessage("Error initializing FS: " + e.message);
+        }
+      } else {
+        displayMessage("Emscripten FS not available.");
+      }
+    };
 
     // Save localStorage data
     function saveLocalStorage() {
       try {
         const data = JSON.stringify(localStorage, null, 2);
-        console.log("Saving localStorage:", data);
+        displayMessage("Saving localStorage: " + data.slice(0, 50) + "...");
         const blob = new Blob([data], { type: "application/json" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
@@ -69,7 +90,7 @@
         document.body.removeChild(a);
         return data;
       } catch (e) {
-        console.error("Error saving localStorage:", e);
+        displayMessage("Error saving localStorage: " + e.message);
         return {};
       }
     }
@@ -78,12 +99,11 @@
     function scrapeIndexedDB(callback) {
       const data = { indexedDB: {} };
       if (!isRuntimeInitialized || !gameInstance || !gameInstance.Module || !gameInstance.Module.FS) {
-        console.warn("Cannot scrape IndexedDB: Runtime not initialized or FS unavailable.");
+        displayMessage("Cannot scrape IndexedDB: Runtime not initialized or FS unavailable.");
         callback(data);
         return;
       }
       try {
-        // Common Unity WebGL paths
         const paths = ["/PlayerPrefs/", "/idbfs/", "/home/web_user/", "/"];
         paths.forEach(path => {
           try {
@@ -97,19 +117,19 @@
                   if (!gameInstance.Module.FS.isDir(stats.mode)) {
                     const content = gameInstance.Module.FS.readFile(filePath, { encoding: "utf8" });
                     data.indexedDB[path][file] = content;
-                    console.log(`Scraped file: ${filePath}`);
+                    displayMessage("Scraped file: " + filePath);
                   }
                 } catch (e) {
-                  console.error(`Error reading file ${file} in ${path}:`, e);
+                  displayMessage("Error reading file " + file + " in " + path + ": " + e.message);
                 }
               }
             });
           } catch (e) {
-            console.error(`Error reading directory ${path}:`, e);
+            displayMessage("Error reading directory " + path + ": " + e.message);
           }
         });
       } catch (e) {
-        console.error("Error scraping IndexedDB:", e);
+        displayMessage("Error scraping IndexedDB: " + e.message);
       }
       callback(data);
     }
@@ -118,26 +138,25 @@
     function scrapeWasmMemory(callback) {
       const data = { wasmMemory: {} };
       if (!isRuntimeInitialized || !gameInstance || !gameInstance.Module || !gameInstance.Module.HEAPU8) {
-        console.warn("Cannot scrape WebAssembly memory: Runtime not initialized or HEAPU8 unavailable.");
+        displayMessage("Cannot scrape WebAssembly memory: Runtime not initialized or HEAPU8 unavailable.");
         callback(data);
         return;
       }
       try {
-        // Read a small memory region (safer default)
-        const startOffset = 0x1000; // Arbitrary, can adjust based on emscripten (1).code analysis
-        const length = 128; // Smaller to avoid crashes
+        const startOffset = 0x1000;
+        const length = 128;
         const memory = gameInstance.Module.HEAPU8;
         if (startOffset + length <= memory.buffer.byteLength) {
           const memorySlice = new Uint8Array(memory.buffer, startOffset, length);
           data.wasmMemory.rawData = Array.from(memorySlice)
             .map(b => b.toString(16).padStart(2, "0"))
             .join("");
-          console.log(`Scraped ${length} bytes from WASM memory at offset ${startOffset}`);
+          displayMessage(`Scraped ${length} bytes from WASM memory at offset ${startOffset}`);
         } else {
-          console.warn("Memory offset out of bounds.");
+          displayMessage("Memory offset out of bounds.");
         }
       } catch (e) {
-        console.error("Error scraping WebAssembly memory:", e);
+        displayMessage("Error scraping WebAssembly memory: " + e.message);
       }
       callback(data);
     }
@@ -149,26 +168,25 @@
         try {
           data.kongregate.userId = kongregate.services.getUserId() || "unknown";
           data.kongregate.username = kongregate.services.getUsername() || "unknown";
-          // Attempt to fetch stats asynchronously
           kongregate.stats.submit("getStats", 0, function (result) {
             data.kongregate.stats = result || {};
-            console.log("Scraped Kongregate stats:", result);
+            displayMessage("Scraped Kongregate stats: " + JSON.stringify(result).slice(0, 50) + "...");
             callback(data);
           });
-          return; // Wait for async callback
+          return;
         } catch (e) {
-          console.error("Error scraping Kongregate API:", e);
+          displayMessage("Error scraping Kongregate API: " + e.message);
         }
       } else {
-        console.warn("Kongregate API not available. Run on Kongregate domain.");
+        displayMessage("Kongregate API not available. Run on Kongregate domain.");
       }
-      callback(data); // Fallback for sync path
+      callback(data);
     }
 
     // Scrape all data sources
     function scrapeAllData() {
       if (!isRuntimeInitialized || !gameInstance) {
-        console.error("Cannot scrape data: Game not initialized.");
+        displayMessage("Cannot scrape data: Game not initialized.");
         alert("Game is not loaded. Please wait and try again.");
         return;
       }
@@ -188,7 +206,7 @@
 
             try {
               const prettyData = JSON.stringify(allData, null, 2);
-              console.log("All scraped data:", prettyData);
+              displayMessage("All scraped data: " + prettyData.slice(0, 50) + "...");
               const blob = new Blob([prettyData], { type: "application/json" });
               const a = document.createElement("a");
               a.href = URL.createObjectURL(blob);
@@ -197,15 +215,15 @@
               a.click();
               document.body.removeChild(a);
             } catch (e) {
-              console.error("Error saving scraped data:", e);
-              alert("Error saving data. Check console for details.");
+              displayMessage("Error saving scraped data: " + e.message);
+              alert("Error saving data. See error log on screen.");
             }
           });
         });
       });
     }
 
-    // Add buttons on page load
+    // Add buttons and error log on page load
     window.onload = function () {
       try {
         // Save Local Storage button
@@ -227,8 +245,11 @@
         scrapeButton.style.zIndex = "1000";
         scrapeButton.onclick = scrapeAllData;
         document.body.appendChild(scrapeButton);
+
+        // Initialize error log
+        displayMessage("Page loaded. Waiting for game initialization.");
       } catch (e) {
-        console.error("Error adding buttons:", e);
+        displayMessage("Error adding buttons: " + e.message);
       }
     };
   </script>
